@@ -28,6 +28,7 @@ namespace fheroes2
         QUIT_GAME,
         MAIN_MENU,
         NEW_GAME,
+        LOCAL_LAN_LOBBY,
         LOAD_GAME,
         HIGHSCORES_STANDARD,
         HIGHSCORES_CAMPAIGN,

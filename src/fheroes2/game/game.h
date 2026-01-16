@@ -57,6 +57,7 @@ namespace Game
 
     fheroes2::GameMode MainMenu( const bool isFirstGameRun );
     fheroes2::GameMode NewGame( const bool isProbablyDemoVersion );
+    fheroes2::GameMode LocalLanLobby();
     fheroes2::GameMode LoadGame();
     fheroes2::GameMode Credits();
     fheroes2::GameMode NewStandard();

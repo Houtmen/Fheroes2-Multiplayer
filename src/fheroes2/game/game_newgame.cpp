@@ -471,6 +471,10 @@ fheroes2::GameMode Game::NewGame( const bool isProbablyDemoVersion )
     fheroes2::Button buttonHotSeat( buttonStandardGame.area().x, buttonStandardGame.area().y, menuButtonsIcnIndex, 12, 13 );
     buttonHotSeat.disable();
 
+    // LAN lobby button uses text-adapted sprites, rendered when entering Multi-Player submenu.
+    fheroes2::ButtonSprite buttonLanLobby;
+    buttonLanLobby.disable();
+
     fheroes2::ButtonGroup playerCountButtons;
 
     for ( int32_t i = 0; i < 5; ++i ) {
@@ -542,6 +546,12 @@ fheroes2::GameMode Game::NewGame( const bool isProbablyDemoVersion )
                 buttonHotSeat.enable();
                 buttonHotSeat.draw();
                 buttonHotSeat.drawShadow( display );
+
+                                background.renderTextAdaptedButtonSprite( buttonLanLobby, _( "LAN Lobby" ),
+                                                                                                                 { buttonHotSeat.area().x - background.activeArea().x,
+                                                                                                                     buttonHotSeat.area().y - background.activeArea().y + buttonHotSeat.area().height + spaceBetweenButtons },
+                                                                                                                 fheroes2::StandardWindow::Padding::TOP_LEFT );
+                                buttonLanLobby.enable();
                 display.render( emptyDialog.rect() );
             }
 
@@ -615,6 +625,12 @@ fheroes2::GameMode Game::NewGame( const bool isProbablyDemoVersion )
         }
         else {
             buttonHotSeat.drawOnState( le.isMouseLeftButtonPressedAndHeldInArea( buttonHotSeat.area() ) );
+
+            // If we are in the multiplayer submenu, this button has already been rendered.
+            if ( buttonLanLobby.isEnabled() ) {
+                buttonLanLobby.drawOnState( le.isMouseLeftButtonPressedAndHeldInArea( buttonLanLobby.area() ) );
+            }
+
             if ( le.MouseClickLeft( buttonHotSeat.area() ) || HotKeyPressEvent( HotKeyEvent::MAIN_MENU_HOTSEAT ) ) {
                 buttonHotSeat.disable();
                 emptyDialog.restore();
@@ -625,10 +641,19 @@ fheroes2::GameMode Game::NewGame( const bool isProbablyDemoVersion )
                 continue;
             }
 
+            if ( le.MouseClickLeft( buttonLanLobby.area() ) ) {
+                return fheroes2::GameMode::LOCAL_LAN_LOBBY;
+            }
+
             if ( le.isMouseRightButtonPressedInArea( buttonHotSeat.area() ) ) {
                 fheroes2::showStandardTextMessage(
                     _( "Hot Seat" ), _( "Play a Hot Seat game, where 2 to 6 players play on the same device, switching into the 'Hot Seat' when it is their turn." ),
                     Dialog::ZERO );
+            }
+            else if ( le.isMouseRightButtonPressedInArea( buttonLanLobby.area() ) ) {
+                fheroes2::showStandardTextMessage( _( "LAN Lobby" ),
+                                                   _( "Host or join a local network lobby (no central server) with chat. Invite-only lobbies require an invite code." ),
+                                                   Dialog::ZERO );
             }
         }
         buttonCancel.drawOnState( le.isMouseLeftButtonPressedAndHeldInArea( buttonCancel.area() ) );

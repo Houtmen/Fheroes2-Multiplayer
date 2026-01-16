@@ -121,6 +121,9 @@ void Game::mainGameLoop( bool isFirstGameRun, bool isProbablyDemoVersion )
             result = Game::NewGame( isProbablyDemoVersion );
             isProbablyDemoVersion = false;
             break;
+        case fheroes2::GameMode::LOCAL_LAN_LOBBY:
+            result = Game::LocalLanLobby();
+            break;
         case fheroes2::GameMode::LOAD_GAME:
             result = Game::LoadGame();
             break;

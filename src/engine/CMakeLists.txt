@@ -49,6 +49,7 @@ target_link_libraries(
 	${USE_SDL_VERSION}_mixer::${USE_SDL_VERSION}_mixer
 	$<$<BOOL:${ENABLE_IMAGE}>:${USE_SDL_VERSION}_image::${USE_SDL_VERSION}_image>
 	$<$<BOOL:${ENABLE_IMAGE}>:PNG::PNG>
+	$<$<PLATFORM_ID:Windows>:ws2_32>
 	Threads::Threads
 	ZLIB::ZLIB
 	)

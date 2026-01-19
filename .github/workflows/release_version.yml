@@ -1,0 +1,43 @@
+name: Release (Version)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish artifacts to (e.g. v1.1.13)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  make:
+    name: Make (Release)
+    uses: ./.github/workflows/make.yml
+    with:
+      releaseTag: ${{ inputs.tag || github.ref_name }}
+      prerelease: false
+  msvc:
+    name: MSVC (Release)
+    uses: ./.github/workflows/msvc.yml
+    with:
+      releaseTag: ${{ inputs.tag || github.ref_name }}
+      prerelease: false
+  android:
+    name: Android (Release)
+    uses: ./.github/workflows/android.yml
+    with:
+      releaseTag: ${{ inputs.tag || github.ref_name }}
+      prerelease: false
+    secrets:
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}

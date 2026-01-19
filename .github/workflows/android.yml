@@ -2,6 +2,15 @@ name: Android
 
 on:
   workflow_call:
+    inputs:
+      releaseTag:
+        type: string
+        required: false
+        default: ''
+      prerelease:
+        type: boolean
+        required: false
+        default: true
     secrets:
       ANDROID_KEYSTORE:
         required: false
@@ -97,11 +106,11 @@ jobs:
       if: ${{ github.event_name == 'push' }}
       with:
         artifacts: fheroes2_android.zip, fheroes2_android_aab.zip
-        body: ${{ github.event.head_commit.message }}
+        body: ${{ github.event.head_commit.message || github.ref_name }}
         token: ${{ secrets.GITHUB_TOKEN }}
-        name: Android build (latest commit)
-        tag: fheroes2-android
+        name: ${{ inputs.releaseTag != '' && format('Android build ({0})', inputs.releaseTag) || 'Android build (latest commit)' }}
+        tag: ${{ inputs.releaseTag != '' && inputs.releaseTag || 'fheroes2-android' }}
         allowUpdates: true
         artifactErrorsFailBuild: true
-        prerelease: true
+        prerelease: ${{ inputs.releaseTag != '' && inputs.prerelease || true }}
         replacesArtifacts: true

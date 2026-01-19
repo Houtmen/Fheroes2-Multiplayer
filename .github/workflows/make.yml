@@ -2,6 +2,15 @@ name: Make
 
 on:
   workflow_call:
+    inputs:
+      releaseTag:
+        type: string
+        required: false
+        default: ''
+      prerelease:
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: write
@@ -209,13 +218,13 @@ jobs:
       if: ${{ contains( matrix.on, github.event_name ) && github.event_name == 'push' }}
       with:
         artifacts: ${{ matrix.package_name }}, ${{ matrix.tools_package_name }}
-        body: ${{ github.event.head_commit.message }}
+        body: ${{ github.event.head_commit.message || github.ref_name }}
         token: ${{ secrets.GITHUB_TOKEN }}
-        name: ${{ matrix.release_name }}
-        tag: ${{ matrix.release_tag }}
+        name: ${{ inputs.releaseTag != '' && format('{0} ({1})', matrix.name, inputs.releaseTag) || matrix.release_name }}
+        tag: ${{ inputs.releaseTag != '' && inputs.releaseTag || matrix.release_tag }}
         allowUpdates: true
         artifactErrorsFailBuild: true
-        prerelease: true
+        prerelease: ${{ inputs.releaseTag != '' && inputs.prerelease || true }}
         replacesArtifacts: true
   make-psv:
     name: Make (PS Vita)
@@ -281,13 +290,13 @@ jobs:
       if: ${{ github.event_name == 'push' }}
       with:
         artifacts: fheroes2_psv.zip
-        body: ${{ github.event.head_commit.message }}
+        body: ${{ github.event.head_commit.message || github.ref_name }}
         token: ${{ secrets.GITHUB_TOKEN }}
-        name: PS Vita build (latest commit)
-        tag: fheroes2-psv-sdl2_dev
+        name: ${{ inputs.releaseTag != '' && format('PS Vita build ({0})', inputs.releaseTag) || 'PS Vita build (latest commit)' }}
+        tag: ${{ inputs.releaseTag != '' && inputs.releaseTag || 'fheroes2-psv-sdl2_dev' }}
         allowUpdates: true
         artifactErrorsFailBuild: true
-        prerelease: true
+        prerelease: ${{ inputs.releaseTag != '' && inputs.prerelease || true }}
         replacesArtifacts: true
   make-switch:
     name: Make (Nintendo Switch)
@@ -329,13 +338,13 @@ jobs:
       if: ${{ github.event_name == 'push' }}
       with:
         artifacts: fheroes2_switch.zip
-        body: ${{ github.event.head_commit.message }}
+        body: ${{ github.event.head_commit.message || github.ref_name }}
         token: ${{ secrets.GITHUB_TOKEN }}
-        name: Nintendo Switch build (latest commit)
-        tag: fheroes2-switch-sdl2_dev
+        name: ${{ inputs.releaseTag != '' && format('Nintendo Switch build ({0})', inputs.releaseTag) || 'Nintendo Switch build (latest commit)' }}
+        tag: ${{ inputs.releaseTag != '' && inputs.releaseTag || 'fheroes2-switch-sdl2_dev' }}
         allowUpdates: true
         artifactErrorsFailBuild: true
-        prerelease: true
+        prerelease: ${{ inputs.releaseTag != '' && inputs.prerelease || true }}
         replacesArtifacts: true
   make-emscripten:
     strategy:
@@ -385,11 +394,11 @@ jobs:
       if: ${{ github.event_name == 'push' }}
       with:
         artifacts: ${{ matrix.package_name }}
-        body: ${{ github.event.head_commit.message }}
+        body: ${{ github.event.head_commit.message || github.ref_name }}
         token: ${{ secrets.GITHUB_TOKEN }}
-        name: ${{ matrix.release_name }}
-        tag: ${{ matrix.release_tag }}
+        name: ${{ inputs.releaseTag != '' && format('{0} ({1})', matrix.name, inputs.releaseTag) || matrix.release_name }}
+        tag: ${{ inputs.releaseTag != '' && inputs.releaseTag || matrix.release_tag }}
         allowUpdates: true
         artifactErrorsFailBuild: true
-        prerelease: true
+        prerelease: ${{ inputs.releaseTag != '' && inputs.prerelease || true }}
         replacesArtifacts: true

@@ -2,6 +2,15 @@ name: MSVC
 
 on:
   workflow_call:
+    inputs:
+      releaseTag:
+        type: string
+        required: false
+        default: ''
+      prerelease:
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: write
@@ -150,11 +159,11 @@ jobs:
         artifacts: build/${{ matrix.platform }}/${{ matrix.build_config }}/${{ matrix.installer_package_name }},
                    build/${{ matrix.platform }}/${{ matrix.build_config }}/${{ matrix.zip_package_name }},
                    build/${{ matrix.platform }}/${{ matrix.build_config }}/${{ matrix.tools_package_name }}
-        body: ${{ github.event.head_commit.message }}
+        body: ${{ github.event.head_commit.message || github.ref_name }}
         token: ${{ secrets.GITHUB_TOKEN }}
-        name: ${{ matrix.release_name }}
-        tag: ${{ matrix.release_tag }}
+        name: ${{ inputs.releaseTag != '' && format('MSVC {0} ({1})', matrix.name, inputs.releaseTag) || matrix.release_name }}
+        tag: ${{ inputs.releaseTag != '' && inputs.releaseTag || matrix.release_tag }}
         allowUpdates: true
         artifactErrorsFailBuild: true
-        prerelease: true
+        prerelease: ${{ inputs.releaseTag != '' && inputs.prerelease || true }}
         replacesArtifacts: true

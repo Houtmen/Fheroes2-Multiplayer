@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -106,6 +107,13 @@ namespace
         }
     }
 
+    void drawSingleLineTextInRoi( const std::string & text, const fheroes2::FontType & font, const fheroes2::Rect & roi, fheroes2::Image & output )
+    {
+        fheroes2::Text line( text, font );
+        line.fitToOneRow( std::max( 1, roi.width - 8 ) );
+        line.drawInRoi( roi.x + 4, roi.y + 4, output, roi );
+    }
+
     bool inputText( const std::string & title, const std::string & body, std::string & value, const size_t limit, const bool multiline = false )
     {
         return Dialog::inputString( fheroes2::Text( title, fheroes2::FontType::normalYellow() ), fheroes2::Text( body, fheroes2::FontType::normalWhite() ), value, limit,
@@ -155,8 +163,20 @@ fheroes2::GameMode Game::LocalLanLobby()
     const fheroes2::Rect chatPanel( leftPanel.x + leftPanel.width + gap, leftPanel.y, active.x + active.width - outerPadding - ( leftPanel.x + leftPanel.width + gap ),
                                     panelHeight );
 
+    const int32_t chatInputOuterHeight = 26;
+    const fheroes2::Rect chatInputOuter{ chatPanel.x + 6, chatPanel.y + chatPanel.height - 6 - chatInputOuterHeight, chatPanel.width - 12, chatInputOuterHeight };
+    const fheroes2::Rect chatInputArea{ chatInputOuter.x + 4, chatInputOuter.y + 4, chatInputOuter.width - 8, chatInputOuter.height - 8 };
+
+    const fheroes2::FontType hintFont( fheroes2::FontSize::SMALL, fheroes2::FontColor::GRAY );
+    const int32_t chatHintHeight = std::max( 1, fheroes2::Text( std::string(), hintFont ).height() );
+    const fheroes2::Rect chatHintRoi{ chatPanel.x + 6, chatInputOuter.y - chatHintHeight - 2, chatPanel.width - 12, chatHintHeight };
+    const fheroes2::Rect chatLogArea{ chatPanel.x, chatPanel.y, chatPanel.width, std::max( 20, chatHintRoi.y - chatPanel.y - 4 ) };
+
     window.applyTextBackgroundShading( leftPanel );
     window.applyTextBackgroundShading( chatPanel );
+
+    // Static borders for better visual structure.
+    fheroes2::DrawRect( display, chatInputOuter, 51 );
 
     // Capture panel backgrounds (shaded) for fast redraw.
     fheroes2::ImageRestorer leftRestorer( display, leftPanel.x, leftPanel.y, leftPanel.width, leftPanel.height );
@@ -175,8 +195,21 @@ fheroes2::GameMode Game::LocalLanLobby()
 
     std::vector<Network::LobbyHostInfo> discovered;
     int32_t selectedLobby = -1;
+    int32_t discoveredScroll = 0;
+
+    std::optional<Network::LobbyHostInfo> connectedHost;
+
+    // These get recomputed when drawing Join view.
+    fheroes2::Rect discoveredListRoi;
+    int32_t discoveredRowHeight = 0;
+    int32_t discoveredMaxRows = 0;
 
     std::deque<Network::LobbyChatMessage> chatLog;
+
+    std::string chatInputText;
+    size_t chatCursorPos = 0;
+    bool chatInputFocused = true;
+    fheroes2::TextInputField chatInput( chatInputArea, false, false, display );
 
     fheroes2::ButtonSprite buttonHost;
     fheroes2::ButtonSprite buttonJoin;
@@ -191,6 +224,11 @@ fheroes2::GameMode Game::LocalLanLobby()
 
     const fheroes2::FontType headerFont = fheroes2::FontType::normalYellow();
 
+    // Header ROI (unshaded area above the chat panel) for dynamic status line.
+    const int32_t headerTextHeight = std::max( 1, fheroes2::Text( std::string(), headerFont ).height() );
+    const fheroes2::Rect chatHeaderRoi{ chatPanel.x, chatPanel.y - headerTextHeight - 4, chatPanel.width, headerTextHeight + 4 };
+    fheroes2::ImageRestorer chatHeaderRestorer( display, chatHeaderRoi.x, chatHeaderRoi.y, chatHeaderRoi.width, chatHeaderRoi.height );
+
     // Static headers.
     {
         fheroes2::Text title( _( "Local LAN Lobby" ), headerFont );
@@ -198,10 +236,40 @@ fheroes2::GameMode Game::LocalLanLobby()
 
         fheroes2::Text leftHeader( _( "Lobby" ), headerFont );
         leftHeader.draw( leftPanel.x + 6, leftPanel.y - leftHeader.height() - 2, display );
-
-        fheroes2::Text chatHeader( _( "Chat" ), headerFont );
-        chatHeader.draw( chatPanel.x + 6, chatPanel.y - chatHeader.height() - 2, display );
     }
+
+    auto renderChatHeader = [&]() {
+        chatHeaderRestorer.restore();
+
+        std::string line = _( "Chat" );
+        line += " - ";
+        line += _( "You:" );
+        line += " ";
+        line += playerName;
+
+        if ( viewMode == LobbyViewMode::Host ) {
+            line += " - ";
+            line += host.isRunning() ? _( "Hosting" ) : _( "Not hosting" );
+        }
+        else {
+            line += " - ";
+            line += client.isConnected() ? _( "Connected" ) : _( "Not connected" );
+
+            if ( connectedHost ) {
+                line += " (";
+                line += connectedHost->endpoint.address;
+                line += ":";
+                line += std::to_string( connectedHost->endpoint.port );
+                line += ")";
+            }
+        }
+
+        fheroes2::Text chatHeader( line, headerFont );
+        chatHeader.fitToOneRow( chatHeaderRoi.width - 12 );
+        chatHeader.drawInRoi( chatHeaderRoi.x + 6, chatHeaderRoi.y + 2, display, chatHeaderRoi );
+
+        display.render( chatHeaderRoi );
+    };
 
     auto renderTabs = [&]() {
         const fheroes2::Point offset{ 18, 8 };
@@ -250,6 +318,7 @@ fheroes2::GameMode Game::LocalLanLobby()
             y += buttonInvite.area().height + 10;
 
             const fheroes2::FontType font( fheroes2::FontSize::SMALL, fheroes2::FontColor::WHITE );
+            const fheroes2::FontType highlightFont( fheroes2::FontSize::SMALL, fheroes2::FontColor::YELLOW );
 
             fheroes2::Text info1( _( "Name:" ) + std::string( " " ) + playerName, font );
             info1.fitToOneRow( leftPanel.width - 16 );
@@ -262,9 +331,22 @@ fheroes2::GameMode Game::LocalLanLobby()
             y += info2.height();
 
             const std::string status = host.isRunning() ? ( _( "Hosting on port " ) + std::to_string( host.tcpPort() ) ) : _( "Not hosting" );
-            fheroes2::Text info3( status, font );
+            fheroes2::Text info3( status, highlightFont );
             info3.fitToOneRow( leftPanel.width - 16 );
             info3.draw( x, y, display );
+            y += info3.height() + 6;
+
+            if ( privacy == Network::LobbyPrivacy::InviteOnly ) {
+                const std::string code = inviteCode.empty() ? _( "(not set)" ) : inviteCode;
+                fheroes2::Text invite( _( "Invite code:" ) + std::string( " " ) + code, highlightFont );
+                invite.fitToOneRow( leftPanel.width - 16 );
+                invite.draw( x, y, display );
+            }
+            else {
+                fheroes2::Text invite( _( "Invite code:" ) + std::string( " - " ) + _( "not required" ), font );
+                invite.fitToOneRow( leftPanel.width - 16 );
+                invite.draw( x, y, display );
+            }
         }
         else {
             const std::string actionText = client.isConnected() ? _( "Disconnect" ) : _( "Connect" );
@@ -284,33 +366,56 @@ fheroes2::GameMode Game::LocalLanLobby()
             info1.draw( x, y, display );
             y += info1.height() + 6;
 
+            if ( selectedLobby >= 0 && selectedLobby < static_cast<int32_t>( discovered.size() ) ) {
+                const auto & sel = discovered[static_cast<size_t>( selectedLobby )];
+                const fheroes2::FontType selFont( fheroes2::FontSize::SMALL, fheroes2::FontColor::YELLOW );
+                const std::string selLine = _( "Selected:" ) + std::string( " " ) + sel.endpoint.address + ":" + std::to_string( sel.endpoint.port );
+                fheroes2::Text selectedInfo( selLine, selFont );
+                selectedInfo.fitToOneRow( leftPanel.width - 16 );
+                selectedInfo.draw( x, y, display );
+                y += selectedInfo.height() + 2;
+
+                if ( sel.privacy == Network::LobbyPrivacy::InviteOnly ) {
+                    fheroes2::Text hint( _( "Invite required" ), selFont );
+                    hint.fitToOneRow( leftPanel.width - 16 );
+                    hint.draw( x, y, display );
+                    y += hint.height() + 6;
+                }
+            }
+
             fheroes2::Text listHeader( _( "Discovered lobbies:" ), font );
             listHeader.draw( x, y, display );
             y += listHeader.height() + 4;
 
+            discoveredListRoi = { x, y, leftPanel.width - 16, leftPanel.y + leftPanel.height - 8 - y };
+            fheroes2::DrawRect( display, discoveredListRoi, 51 );
+
             const int32_t lineHeight = fheroes2::Text( std::string(), font ).height();
-            const int32_t maxLines = std::max( 1, ( leftPanel.y + leftPanel.height - 6 - y ) / std::max( 1, lineHeight ) );
+            discoveredRowHeight = std::max( 1, lineHeight + 2 );
+            discoveredMaxRows = std::max( 1, discoveredListRoi.height / discoveredRowHeight );
 
-            for ( int32_t i = 0; i < static_cast<int32_t>( discovered.size() ) && i < maxLines; ++i ) {
-                const auto & h = discovered[static_cast<size_t>( i )];
-                const std::string line = h.lobbyName + " (" + h.hostPlayerName + ") - " + privacyToString( h.privacy ) + " - " + h.endpoint.address + ":"
-                                         + std::to_string( h.endpoint.port );
+            const int32_t maxScroll = std::max( 0, static_cast<int32_t>( discovered.size() ) - discoveredMaxRows );
+            discoveredScroll = std::clamp( discoveredScroll, 0, maxScroll );
 
-                fheroes2::Text t( line, font );
-                t.fitToOneRow( leftPanel.width - 16 );
-                if ( i == selectedLobby ) {
-                    // Draw selection marker.
-                    fheroes2::Text sel( ">", font );
-                    sel.draw( x, y, display );
-                    t.draw( x + 10, y, display );
-                }
-                else {
-                    t.draw( x + 10, y, display );
-                }
-                y += lineHeight;
-                if ( y > leftPanel.y + leftPanel.height - lineHeight ) {
+            for ( int32_t row = 0; row < discoveredMaxRows; ++row ) {
+                const int32_t idx = discoveredScroll + row;
+                if ( idx < 0 || idx >= static_cast<int32_t>( discovered.size() ) ) {
                     break;
                 }
+
+                const auto & h = discovered[static_cast<size_t>( idx )];
+
+                const fheroes2::Rect rowRoi{ discoveredListRoi.x + 2, discoveredListRoi.y + 2 + row * discoveredRowHeight, discoveredListRoi.width - 4,
+                                             discoveredRowHeight };
+                if ( idx == selectedLobby ) {
+                    fheroes2::DrawRect( display, rowRoi, 51 );
+                }
+
+                const std::string line = h.lobbyName + " (" + h.hostPlayerName + ")" + " - " + privacyToString( h.privacy ) + " - " + h.endpoint.address + ":"
+                                         + std::to_string( h.endpoint.port );
+                fheroes2::Text t( line, font );
+                t.fitToOneRow( discoveredListRoi.width - 12 );
+                t.drawInRoi( discoveredListRoi.x + 6, rowRoi.y, display, discoveredListRoi );
             }
         }
 
@@ -319,13 +424,32 @@ fheroes2::GameMode Game::LocalLanLobby()
 
     auto renderChatPanel = [&]() {
         chatRestorer.restore();
-        drawChat( chatPanel, chatLog, display );
+
+        drawChat( chatLogArea, chatLog, display );
+
+        drawSingleLineTextInRoi( _( "Enter: send   Shift+Enter: newline (later)" ), hintFont, chatHintRoi, display );
+
+        if ( chatInputFocused ) {
+            chatInput.draw( chatInputText, static_cast<int32_t>( chatCursorPos ) );
+        }
+        else {
+            const fheroes2::FontType font( fheroes2::FontSize::SMALL, fheroes2::FontColor::WHITE );
+            const fheroes2::FontType hintFont( fheroes2::FontSize::SMALL, fheroes2::FontColor::GRAY );
+            if ( chatInputText.empty() ) {
+                drawSingleLineTextInRoi( _( "Click here to type..." ), hintFont, chatInputOuter, display );
+            }
+            else {
+                drawSingleLineTextInRoi( chatInputText, font, chatInputOuter, display );
+            }
+        }
+
         display.render( chatPanel );
     };
 
     renderTabs();
     renderBottomButtons();
     renderLeftPanel();
+    renderChatHeader();
     renderChatPanel();
 
     fheroes2::validateFadeInAndRender();
@@ -354,6 +478,19 @@ fheroes2::GameMode Game::LocalLanLobby()
         }
 
         trimChat( chatLog, 200 );
+
+        // Focus handling for chat input.
+        if ( le.MouseClickLeft( chatInputOuter ) ) {
+            chatInputFocused = true;
+            chatCursorPos = chatInput.getCursorInTextPosition( le.getMouseLeftButtonPressedPos() );
+            needChatRedraw = true;
+        }
+        else if ( le.MouseClickLeft() && !le.isMouseCursorPosInArea( chatInputOuter ) ) {
+            if ( chatInputFocused ) {
+                chatInputFocused = false;
+                needChatRedraw = true;
+            }
+        }
 
         buttonHost.drawOnState( le.isMouseLeftButtonPressedAndHeldInArea( buttonHost.area() ) );
         buttonJoin.drawOnState( le.isMouseLeftButtonPressedAndHeldInArea( buttonJoin.area() ) );
@@ -390,11 +527,13 @@ fheroes2::GameMode Game::LocalLanLobby()
             viewMode = LobbyViewMode::Host;
             client.disconnect();
             client.stopDiscovery();
+            connectedHost.reset();
             discovered.clear();
             selectedLobby = -1;
             needLeftRedraw = true;
             needChatRedraw = true;
             renderTabs();
+            renderChatHeader();
             display.render( window.activeArea() );
         }
         if ( le.MouseClickLeft( buttonJoin.area() ) && viewMode != LobbyViewMode::Join ) {
@@ -406,26 +545,32 @@ fheroes2::GameMode Game::LocalLanLobby()
             needLeftRedraw = true;
             needChatRedraw = true;
             renderTabs();
+            renderChatHeader();
             display.render( window.activeArea() );
         }
 
+        if ( viewMode == LobbyViewMode::Join && le.isMouseWheelUpInArea( discoveredListRoi ) ) {
+            if ( discoveredScroll > 0 ) {
+                --discoveredScroll;
+                needLeftRedraw = true;
+            }
+        }
+        if ( viewMode == LobbyViewMode::Join && le.isMouseWheelDownInArea( discoveredListRoi ) ) {
+            const int32_t maxScroll = std::max( 0, static_cast<int32_t>( discovered.size() ) - std::max( 1, discoveredMaxRows ) );
+            if ( discoveredScroll < maxScroll ) {
+                ++discoveredScroll;
+                needLeftRedraw = true;
+            }
+        }
+
         // Select discovered lobby on click (join mode).
-        if ( viewMode == LobbyViewMode::Join && le.MouseClickLeft( leftPanel ) ) {
-            const fheroes2::FontType font( fheroes2::FontSize::SMALL, fheroes2::FontColor::WHITE );
-            const int32_t lineHeight = fheroes2::Text( std::string(), font ).height();
-
-            // Compute the approximate Y of the first lobby line: matches renderLeftPanel's layout.
-            // (buttons: action + set name + set invite + spacing + name line + spacing + header line + spacing)
-            const int32_t y0 = buttonInvite.area().y + buttonInvite.area().height + 10
-                              + fheroes2::Text( std::string(), font ).height() + 6
-                              + fheroes2::Text( std::string(), font ).height() + 4;
-
-            if ( le.GetMouseCursor().y >= y0 ) {
-                const int32_t idx = ( le.GetMouseCursor().y - y0 ) / std::max( 1, lineHeight );
-                if ( idx >= 0 && idx < static_cast<int32_t>( discovered.size() ) ) {
-                    selectedLobby = idx;
-                    needLeftRedraw = true;
-                }
+        if ( viewMode == LobbyViewMode::Join && le.MouseClickLeft( discoveredListRoi ) ) {
+            const int32_t localY = le.getMouseLeftButtonPressedPos().y - discoveredListRoi.y - 2;
+            const int32_t row = ( discoveredRowHeight > 0 ) ? ( localY / discoveredRowHeight ) : 0;
+            const int32_t idx = discoveredScroll + row;
+            if ( idx >= 0 && idx < static_cast<int32_t>( discovered.size() ) ) {
+                selectedLobby = idx;
+                needLeftRedraw = true;
             }
         }
 
@@ -436,6 +581,7 @@ fheroes2::GameMode Game::LocalLanLobby()
                 if ( !tmp.empty() ) {
                     playerName = std::move( tmp );
                     needLeftRedraw = true;
+                    renderChatHeader();
                 }
             }
         }
@@ -468,6 +614,7 @@ fheroes2::GameMode Game::LocalLanLobby()
                 if ( host.isRunning() ) {
                     host.stop();
                     needLeftRedraw = true;
+                    renderChatHeader();
                 }
                 else {
                     if ( privacy == Network::LobbyPrivacy::InviteOnly && inviteCode.empty() ) {
@@ -477,13 +624,16 @@ fheroes2::GameMode Game::LocalLanLobby()
                         fheroes2::showStandardTextMessage( _( "Error" ), _( "Failed to start hosting." ), Dialog::OK );
                     }
                     needLeftRedraw = true;
+                    renderChatHeader();
                 }
             }
             else {
                 if ( client.isConnected() ) {
                     client.disconnect();
+                    connectedHost.reset();
                     needLeftRedraw = true;
                     needChatRedraw = true;
+                    renderChatHeader();
                 }
                 else {
                     if ( selectedLobby < 0 || selectedLobby >= static_cast<int32_t>( discovered.size() ) ) {
@@ -497,28 +647,61 @@ fheroes2::GameMode Game::LocalLanLobby()
                         else if ( !client.connectToHost( h, playerName, inviteCode ) ) {
                             fheroes2::showStandardTextMessage( _( "Error" ), _( "Failed to connect." ), Dialog::OK );
                         }
+                        else {
+                            connectedHost = h;
+                        }
                         needLeftRedraw = true;
                         needChatRedraw = true;
+                        renderChatHeader();
                     }
                 }
             }
         }
 
+        const auto trySendChat = [&]() {
+            if ( chatInputText.empty() ) {
+                return;
+            }
+
+            if ( viewMode == LobbyViewMode::Host && host.isRunning() ) {
+                host.sendChatFromHost( chatInputText );
+                chatInputText.clear();
+                chatCursorPos = 0;
+                needChatRedraw = true;
+            }
+            else if ( viewMode == LobbyViewMode::Join && client.isConnected() ) {
+                client.sendChat( chatInputText );
+                chatInputText.clear();
+                chatCursorPos = 0;
+                needChatRedraw = true;
+            }
+            else {
+                fheroes2::showStandardTextMessage( _( "Chat" ), _( "You are not connected to a lobby." ), Dialog::OK );
+            }
+        };
+
         if ( le.MouseClickLeft( buttonSend.area() ) ) {
-            std::string text;
-            if ( inputText( _( "Chat" ), _( "Enter message:" ), text, 120, false ) ) {
-                if ( !text.empty() ) {
-                    if ( viewMode == LobbyViewMode::Host && host.isRunning() ) {
-                        host.sendChatFromHost( text );
-                        needChatRedraw = true;
-                    }
-                    else if ( viewMode == LobbyViewMode::Join && client.isConnected() ) {
-                        client.sendChat( text );
-                        needChatRedraw = true;
-                    }
-                    else {
-                        fheroes2::showStandardTextMessage( _( "Chat" ), _( "You are not connected to a lobby." ), Dialog::OK );
-                    }
+            trySendChat();
+        }
+
+        if ( chatInputFocused && le.isAnyKeyPressed() ) {
+            const fheroes2::Key key = le.getPressedKeyValue();
+
+            if ( key == fheroes2::Key::KEY_ESCAPE ) {
+                chatInputFocused = false;
+                needChatRedraw = true;
+            }
+            if ( key == fheroes2::Key::KEY_ENTER ) {
+                trySendChat();
+            }
+            else if ( chatInputText.size() < 120 || key == fheroes2::Key::KEY_BACKSPACE || key == fheroes2::Key::KEY_DELETE || key == fheroes2::Key::KEY_LEFT
+                      || key == fheroes2::Key::KEY_RIGHT || key == fheroes2::Key::KEY_HOME || key == fheroes2::Key::KEY_END ) {
+                std::string tmp = chatInputText;
+                const size_t newPos = fheroes2::InsertKeySym( tmp, chatCursorPos, key, LocalEvent::getCurrentKeyModifiers() );
+                if ( tmp != chatInputText || newPos != chatCursorPos ) {
+                    chatInputText = std::move( tmp );
+                    chatCursorPos = newPos;
+                    needChatRedraw = true;
                 }
             }
         }
@@ -530,6 +713,10 @@ fheroes2::GameMode Game::LocalLanLobby()
         if ( needChatRedraw ) {
             renderChatPanel();
             needChatRedraw = false;
+        }
+        else if ( chatInputFocused && chatInput.eventProcessing() ) {
+            // Cursor blink update.
+            display.render( chatInput.getCursorArea() );
         }
     }
 

@@ -10,9 +10,24 @@ on:
         description: 'Tag to publish artifacts to (e.g. v1.1.13)'
         required: true
         type: string
+      includeWindows:
+        description: 'Build Windows (MSVC) artifacts'
+        required: false
+        default: true
+        type: boolean
+      includeAndroid:
+        description: 'Build Android artifacts (APK/AAB)'
+        required: false
+        default: false
+        type: boolean
+      includeExtraTargets:
+        description: 'Build extra targets (PS Vita, Switch, Emscripten)'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -24,18 +39,24 @@ jobs:
     uses: ./.github/workflows/make.yml
     with:
       releaseTag: ${{ inputs.tag || github.ref_name }}
+      sourceRef: ${{ inputs.tag || github.ref_name }}
+      includeExtraTargets: ${{ inputs.includeExtraTargets }}
       prerelease: false
   msvc:
     name: MSVC (Release)
+    if: ${{ inputs.includeWindows }}
     uses: ./.github/workflows/msvc.yml
     with:
       releaseTag: ${{ inputs.tag || github.ref_name }}
+      sourceRef: ${{ inputs.tag || github.ref_name }}
       prerelease: false
   android:
     name: Android (Release)
+    if: ${{ inputs.includeAndroid }}
     uses: ./.github/workflows/android.yml
     with:
       releaseTag: ${{ inputs.tag || github.ref_name }}
+      sourceRef: ${{ inputs.tag || github.ref_name }}
       prerelease: false
     secrets:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}

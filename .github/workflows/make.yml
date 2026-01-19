@@ -7,6 +7,14 @@ on:
         type: string
         required: false
         default: ''
+      sourceRef:
+        type: string
+        required: false
+        default: ''
+      includeExtraTargets:
+        type: boolean
+        required: false
+        default: true
       prerelease:
         type: boolean
         required: false
@@ -24,10 +32,9 @@ jobs:
           on: [ 'pull_request', 'push' ]
           os: ubuntu-22.04
           dependencies: libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev gettext
-          env:
-            FHEROES2_STRICT_COMPILATION: ON
-            FHEROES2_WITH_TOOLS: ON
-            FHEROES2_WITH_IMAGE: ON
+          FHEROES2_STRICT_COMPILATION: ON
+          FHEROES2_WITH_TOOLS: ON
+          FHEROES2_WITH_IMAGE: ON
           package_name: fheroes2_ubuntu_x86-64_SDL2.zip
           package_files: >-
             LICENSE
@@ -59,20 +66,18 @@ jobs:
           on: [ 'pull_request' ]
           os: ubuntu-latest
           dependencies: libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev gettext
-          env:
-            FHEROES2_STRICT_COMPILATION: ON
-            FHEROES2_WITH_TOOLS: ON
-            FHEROES2_WITH_IMAGE: ON
-            FHEROES2_WITH_DEBUG: ON
-            FHEROES2_WITH_ASAN: ON
+          FHEROES2_STRICT_COMPILATION: ON
+          FHEROES2_WITH_TOOLS: ON
+          FHEROES2_WITH_IMAGE: ON
+          FHEROES2_WITH_DEBUG: ON
+          FHEROES2_WITH_ASAN: ON
         - name: Linux ARM64 SDL2 Release
           on: [ 'pull_request', 'push' ]
           os: ubuntu-22.04-arm
           dependencies: libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev gettext
-          env:
-            FHEROES2_STRICT_COMPILATION: ON
-            FHEROES2_WITH_TOOLS: ON
-            FHEROES2_WITH_IMAGE: ON
+          FHEROES2_STRICT_COMPILATION: ON
+          FHEROES2_WITH_TOOLS: ON
+          FHEROES2_WITH_IMAGE: ON
           package_name: fheroes2_ubuntu_arm64_SDL2.zip
           package_files: >-
             LICENSE
@@ -104,24 +109,22 @@ jobs:
           on: [ 'pull_request' ]
           os: ubuntu-24.04-arm
           dependencies: libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev gettext
-          env:
-            FHEROES2_STRICT_COMPILATION: ON
-            FHEROES2_WITH_TOOLS: ON
-            FHEROES2_WITH_IMAGE: ON
-            FHEROES2_WITH_DEBUG: ON
-            FHEROES2_WITH_TSAN: ON
+          FHEROES2_STRICT_COMPILATION: ON
+          FHEROES2_WITH_TOOLS: ON
+          FHEROES2_WITH_IMAGE: ON
+          FHEROES2_WITH_DEBUG: ON
+          FHEROES2_WITH_TSAN: ON
         - name: macOS SDL2
           on: [ 'pull_request', 'push' ]
           os: macos-14
           arch: x86_64
           dependencies: sdl2 sdl2_mixer sdl2_image
-          env:
-            CFLAGS: --target=x86_64-apple-macos10.15
-            CXXFLAGS: --target=x86_64-apple-macos10.15
-            LDFLAGS: --target=x86_64-apple-macos10.15
-            FHEROES2_STRICT_COMPILATION: ON
-            FHEROES2_WITH_TOOLS: ON
-            FHEROES2_WITH_IMAGE: ON
+          CFLAGS: --target=x86_64-apple-macos10.15
+          CXXFLAGS: --target=x86_64-apple-macos10.15
+          LDFLAGS: --target=x86_64-apple-macos10.15
+          FHEROES2_STRICT_COMPILATION: ON
+          FHEROES2_WITH_TOOLS: ON
+          FHEROES2_WITH_IMAGE: ON
           package_name: fheroes2_macos_x86-64_SDL2.zip
           package_files: >-
             LICENSE
@@ -153,10 +156,9 @@ jobs:
           on: [ 'pull_request' ]
           os: macos-latest
           dependencies: sdl2 sdl2_mixer dylibbundler
-          env:
-            FHEROES2_STRICT_COMPILATION: ON
-            FHEROES2_WITH_TOOLS: ON
-            FHEROES2_MACOS_APP_BUNDLE: ON
+          FHEROES2_STRICT_COMPILATION: ON
+          FHEROES2_WITH_TOOLS: ON
+          FHEROES2_MACOS_APP_BUNDLE: ON
     name: Make (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -164,15 +166,18 @@ jobs:
       run:
         shell: bash
     steps:
-    - uses: actions/checkout@v6
-      if: ${{ contains( matrix.on, github.event_name ) }}
+    - uses: actions/checkout@v4
+      if: ${{ ( inputs.releaseTag != '' && matrix.package_name != '' ) || contains( matrix.on, github.event_name ) }}
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.sourceRef != '' && inputs.sourceRef || github.ref }}
     - name: Install dependencies (Linux)
-      if: ${{ contains( matrix.on, github.event_name ) && startsWith( matrix.os, 'ubuntu-' ) }}
+      if: ${{ ( ( inputs.releaseTag != '' && matrix.package_name != '' ) || contains( matrix.on, github.event_name ) ) && startsWith( matrix.os, 'ubuntu-' ) }}
       run: |
         sudo apt-get -y update
         sudo apt-get -y install ${{ matrix.dependencies }}
     - name: Install dependencies (macOS)
-      if: ${{ contains( matrix.on, github.event_name ) && startsWith( matrix.os, 'macos-' ) }}
+      if: ${{ ( ( inputs.releaseTag != '' && matrix.package_name != '' ) || contains( matrix.on, github.event_name ) ) && startsWith( matrix.os, 'macos-' ) }}
       run: |
         if [[ "${{ matrix.arch }}" == x86_64 ]]; then
             arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -184,38 +189,58 @@ jobs:
         # Do not update outdated dependencies of installed packages
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: ON
     - name: Build (Linux)
-      if: ${{ contains( matrix.on, github.event_name ) && startsWith( matrix.os, 'ubuntu-' ) }}
+      if: ${{ ( ( inputs.releaseTag != '' && matrix.package_name != '' ) || contains( matrix.on, github.event_name ) ) && startsWith( matrix.os, 'ubuntu-' ) }}
       run: |
         make -j "$(nproc)"
-      env: ${{ matrix.env }}
+      env:
+        CFLAGS: ${{ matrix.CFLAGS }}
+        CXXFLAGS: ${{ matrix.CXXFLAGS }}
+        LDFLAGS: ${{ matrix.LDFLAGS }}
+        FHEROES2_STRICT_COMPILATION: ${{ matrix.FHEROES2_STRICT_COMPILATION }}
+        FHEROES2_WITH_TOOLS: ${{ matrix.FHEROES2_WITH_TOOLS }}
+        FHEROES2_WITH_IMAGE: ${{ matrix.FHEROES2_WITH_IMAGE }}
+        FHEROES2_WITH_DEBUG: ${{ matrix.FHEROES2_WITH_DEBUG }}
+        FHEROES2_WITH_ASAN: ${{ matrix.FHEROES2_WITH_ASAN }}
+        FHEROES2_WITH_TSAN: ${{ matrix.FHEROES2_WITH_TSAN }}
+        FHEROES2_MACOS_APP_BUNDLE: ${{ matrix.FHEROES2_MACOS_APP_BUNDLE }}
     - name: Build (MacOS)
-      if: ${{ contains( matrix.on, github.event_name ) && startsWith( matrix.os, 'macos-' ) }}
+      if: ${{ ( ( inputs.releaseTag != '' && matrix.package_name != '' ) || contains( matrix.on, github.event_name ) ) && startsWith( matrix.os, 'macos-' ) }}
       run: |
         if [[ "${{ matrix.arch }}" == x86_64 ]]; then
             # Homebrew uses /opt/homebrew for Apple Silicon packages and /usr/local for x86_64 packages
             export PATH=/usr/local/bin:$PATH
         fi
         make -j "$(sysctl -n hw.logicalcpu)"
-      env: ${{ matrix.env }}
+      env:
+        CFLAGS: ${{ matrix.CFLAGS }}
+        CXXFLAGS: ${{ matrix.CXXFLAGS }}
+        LDFLAGS: ${{ matrix.LDFLAGS }}
+        FHEROES2_STRICT_COMPILATION: ${{ matrix.FHEROES2_STRICT_COMPILATION }}
+        FHEROES2_WITH_TOOLS: ${{ matrix.FHEROES2_WITH_TOOLS }}
+        FHEROES2_WITH_IMAGE: ${{ matrix.FHEROES2_WITH_IMAGE }}
+        FHEROES2_WITH_DEBUG: ${{ matrix.FHEROES2_WITH_DEBUG }}
+        FHEROES2_WITH_ASAN: ${{ matrix.FHEROES2_WITH_ASAN }}
+        FHEROES2_WITH_TSAN: ${{ matrix.FHEROES2_WITH_TSAN }}
+        FHEROES2_MACOS_APP_BUNDLE: ${{ matrix.FHEROES2_MACOS_APP_BUNDLE }}
     - name: Create packages
-      if: ${{ contains( matrix.on, github.event_name ) && matrix.package_name != '' && matrix.tools_package_name != '' }}
+      if: ${{ ( inputs.releaseTag != '' || contains( matrix.on, github.event_name ) ) && matrix.package_name != '' && matrix.tools_package_name != '' }}
       run: |
         7z a -bb1 -tzip -- ${{ matrix.package_name }} ${{ matrix.package_files }}
         7z a -bb1 -tzip -- ${{ matrix.tools_package_name }} ${{ matrix.tools_package_files }}
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       if: ${{ contains( matrix.on, github.event_name ) && github.event_name == 'pull_request' && matrix.package_name != '' }}
       with:
         name: ${{ matrix.package_name }}
         path: ${{ matrix.package_name }}
         if-no-files-found: error
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       if: ${{ contains( matrix.on, github.event_name ) && github.event_name == 'pull_request' && matrix.tools_package_name != '' }}
       with:
         name: ${{ matrix.tools_package_name }}
         path: ${{ matrix.tools_package_name }}
         if-no-files-found: error
     - uses: ncipollo/release-action@v1
-      if: ${{ contains( matrix.on, github.event_name ) && github.event_name == 'push' }}
+      if: ${{ matrix.package_name != '' && matrix.tools_package_name != '' && ( inputs.releaseTag != '' || ( contains( matrix.on, github.event_name ) && github.event_name == 'push' ) ) }}
       with:
         artifacts: ${{ matrix.package_name }}, ${{ matrix.tools_package_name }}
         body: ${{ github.event.head_commit.message || github.ref_name }}
@@ -228,19 +253,23 @@ jobs:
         replacesArtifacts: true
   make-psv:
     name: Make (PS Vita)
+    if: ${{ inputs.includeExtraTargets }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
         shell: bash
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.sourceRef != '' && inputs.sourceRef || github.ref }}
     - name: Install dependencies
       run: |
         sudo apt-get -y update
         sudo apt-get -y install libgcc1 gettext
     - name: Prepare Vita SDK cache
-      uses: actions/cache@v5
+      uses: actions/cache@v4
       with:
         path: ~/.vitasdk-cache
         key: make-vitasdk-cache-${{ github.sha }}
@@ -280,14 +309,14 @@ jobs:
       run: |
         # Translations, H2D files and FH2M maps are already bundled into fheroes2.vpk
         7z a -bb1 -tzip -- fheroes2_psv.zip LICENSE changelog.txt fheroes2.vpk ./docs/README.txt ./docs/README_PSV.md
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       if: ${{ github.event_name == 'pull_request' }}
       with:
         name: fheroes2_psv.zip
         path: fheroes2_psv.zip
         if-no-files-found: error
     - uses: ncipollo/release-action@v1
-      if: ${{ github.event_name == 'push' }}
+      if: ${{ inputs.releaseTag != '' || github.event_name == 'push' }}
       with:
         artifacts: fheroes2_psv.zip
         body: ${{ github.event.head_commit.message || github.ref_name }}
@@ -300,6 +329,7 @@ jobs:
         replacesArtifacts: true
   make-switch:
     name: Make (Nintendo Switch)
+    if: ${{ inputs.includeExtraTargets }}
     runs-on: ubuntu-latest
     container: devkitpro/devkita64:latest
     timeout-minutes: 30
@@ -307,7 +337,10 @@ jobs:
       run:
         shell: bash
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.sourceRef != '' && inputs.sourceRef || github.ref }}
     - name: Install dependencies
       run: |
         # TODO: remove this temporary workaround
@@ -328,14 +361,14 @@ jobs:
     - name: Create package
       run: |
         7z a -bb1 -tzip -- fheroes2_switch.zip LICENSE changelog.txt fheroes2.nro ./docs/README.txt ./docs/README_switch.md files/data/*.h2d files/lang/*.mo maps/*.fh2m
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       if: ${{ github.event_name == 'pull_request' }}
       with:
         name: fheroes2_switch.zip
         path: fheroes2_switch.zip
         if-no-files-found: error
     - uses: ncipollo/release-action@v1
-      if: ${{ github.event_name == 'push' }}
+      if: ${{ inputs.releaseTag != '' || github.event_name == 'push' }}
       with:
         artifacts: fheroes2_switch.zip
         body: ${{ github.event.head_commit.message || github.ref_name }}
@@ -347,19 +380,18 @@ jobs:
         prerelease: ${{ inputs.releaseTag != '' && inputs.prerelease || true }}
         replacesArtifacts: true
   make-emscripten:
+    if: ${{ inputs.includeExtraTargets }}
     strategy:
       matrix:
         include:
         - name: Emscripten
-          env:
-            FHEROES2_STRICT_COMPILATION: ON
+          FHEROES2_STRICT_COMPILATION: ON
           package_name: fheroes2_emscripten.zip
           release_name: Emscripten build (latest commit)
           release_tag: fheroes2-emscripten-sdl2_dev
         - name: Emscripten Multithreaded
-          env:
-            FHEROES2_STRICT_COMPILATION: ON
-            FHEROES2_WITH_THREADS: ON
+          FHEROES2_STRICT_COMPILATION: ON
+          FHEROES2_WITH_THREADS: ON
           package_name: fheroes2_emscripten_mt.zip
           release_name: Emscripten Multithreaded build (latest commit)
           release_tag: fheroes2-emscripten-sdl2-mt_dev
@@ -371,7 +403,10 @@ jobs:
       run:
         shell: bash
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.sourceRef != '' && inputs.sourceRef || github.ref }}
     - name: Install dependencies
       run: |
         sudo apt-get -y update
@@ -379,19 +414,21 @@ jobs:
     - name: Build
       run: |
         emmake make -f Makefile.emscripten -j "$(nproc)"
-      env: ${{ matrix.env }}
+      env:
+        FHEROES2_STRICT_COMPILATION: ${{ matrix.FHEROES2_STRICT_COMPILATION }}
+        FHEROES2_WITH_THREADS: ${{ matrix.FHEROES2_WITH_THREADS }}
     - name: Create package
       run: |
         # Translations, H2D files and FH2M maps are already bundled into fheroes2.data
         7z a -bb1 -tzip -- ${{ matrix.package_name }} LICENSE changelog.txt fheroes2.data fheroes2.js fheroes2.wasm ./docs/README.txt ./files/emscripten/*
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       if: ${{ github.event_name == 'pull_request' }}
       with:
         name: ${{ matrix.package_name }}
         path: ${{ matrix.package_name }}
         if-no-files-found: error
     - uses: ncipollo/release-action@v1
-      if: ${{ github.event_name == 'push' }}
+      if: ${{ inputs.releaseTag != '' || github.event_name == 'push' }}
       with:
         artifacts: ${{ matrix.package_name }}
         body: ${{ github.event.head_commit.message || github.ref_name }}

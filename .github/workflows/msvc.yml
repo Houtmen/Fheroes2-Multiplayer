@@ -7,6 +7,10 @@ on:
         type: string
         required: false
         default: ''
+      sourceRef:
+        type: string
+        required: false
+        default: ''
       prerelease:
         type: boolean
         required: false
@@ -45,7 +49,10 @@ jobs:
       run:
         shell: bash
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.sourceRef != '' && inputs.sourceRef || github.ref }}
     - name: Install dependencies
       run: |
         script/windows/install_packages.bat
@@ -135,26 +142,26 @@ jobs:
         fi
       env:
         BUILD_DIR: build\${{ matrix.platform }}\${{ matrix.build_config }}
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       if: ${{ github.event_name == 'pull_request' }}
       with:
         name: ${{ matrix.installer_package_name }}
         path: build/${{ matrix.platform }}/${{ matrix.build_config }}/${{ matrix.installer_package_name }}
         if-no-files-found: error
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       if: ${{ github.event_name == 'pull_request' }}
       with:
         name: ${{ matrix.zip_package_name }}
         path: build/${{ matrix.platform }}/${{ matrix.build_config }}/${{ matrix.zip_package_name }}
         if-no-files-found: error
-    - uses: actions/upload-artifact@v6
+    - uses: actions/upload-artifact@v4
       if: ${{ github.event_name == 'pull_request' }}
       with:
         name: ${{ matrix.tools_package_name }}
         path: build/${{ matrix.platform }}/${{ matrix.build_config }}/${{ matrix.tools_package_name }}
         if-no-files-found: error
     - uses: ncipollo/release-action@v1
-      if: ${{ github.event_name == 'push' }}
+      if: ${{ inputs.releaseTag != '' || github.event_name == 'push' }}
       with:
         artifacts: build/${{ matrix.platform }}/${{ matrix.build_config }}/${{ matrix.installer_package_name }},
                    build/${{ matrix.platform }}/${{ matrix.build_config }}/${{ matrix.zip_package_name }},
